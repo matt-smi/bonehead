@@ -1,5 +1,7 @@
 use std::env;
 
+use bonehead::edit_distance::close_enough;
+use serenity::all::{CreateEmbed, CreateMessage};
 use serenity::async_trait;
 use serenity::model::channel::Message;
 use serenity::prelude::*;
@@ -9,6 +11,24 @@ struct Handler;
 #[async_trait]
 impl EventHandler for Handler {
     async fn message(&self, ctx: Context, msg: Message) {
+        // Bonehead's own ID. Ignore own messages to prevent infinite loop
+        if msg.author.id.to_string() == "1120914419875053638" {
+            return;
+        }
+
+        if msg.content == "!embed" {
+            let embed = CreateEmbed::new()
+                .title("Embed Title")
+                .description("Sample embed")
+                .image("https://www.pngfind.com/pngs/m/52-527995_the-most-epic-meme-on-the-planet-png.png")
+                .color(0x00ff00);
+
+            let message = CreateMessage::new().embed(embed);
+            if let Err(_why) = msg.channel_id.send_message(&ctx.http, message).await {
+                // do nothing
+            }
+        }
+
         if msg.content == "!hello" && msg.channel_id.to_string() == "1547789542377914378" {
             if let Err(why) = msg
                 .channel_id
@@ -23,12 +43,35 @@ impl EventHandler for Handler {
                 println!("Error sending message: {why:?}");
             }
         }
-        if msg.content.to_lowercase().contains("games") {
-            if let Err(_why) = msg.channel_id.say(&ctx.http, "https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExMjhpYXgxMHA2M2hvZWgwM29yM3YwNGdoYTdlanR4YWtmMzZwZXdhcSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/yA4oraHXhwqNHpELV1/giphy.gif").await {
-                //
+
+        if msg
+            .content
+            .split(" ")
+            .any(|word| close_enough("game", word))
+        {
+            if let Err(_why) = msg.channel_id.say(
+                &ctx.http,
+                "https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExMjhpYXgxMHA2M2hvZWgwM29yM3YwNGdoYTdlanR4YWtmMzZwZXdhcSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/yA4oraHXhwqNHpELV1/giphy.gif"
+            ).await {
+                // ignore
             }
         }
-        if msg.content.to_lowercase().contains("zack") {
+
+        if msg
+            .content
+            .split(" ")
+            .any(|word| close_enough("matthew", word))
+        {
+            if let Err(_why) = msg.react(&ctx.http, '🐐').await {
+                println!("Error");
+            }
+        }
+
+        if msg
+            .content
+            .split(" ")
+            .any(|word| close_enough("zack", word) || word == "<@230826525732241409>")
+        {
             if let Err(_why) = msg.react(&ctx.http, '🔥').await {
                 println!("Error");
             }
@@ -38,13 +81,6 @@ impl EventHandler for Handler {
                 .await
             {
                 // no op
-            }
-        }
-        if msg.content.to_lowercase().contains("matthew")
-            || msg.content.to_lowercase().contains("<@235962572912721922>")
-        {
-            if let Err(_why) = msg.react(&ctx.http, '🐐').await {
-                println!("Error");
             }
         }
     }
