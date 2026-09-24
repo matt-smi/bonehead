@@ -2,7 +2,6 @@ use reqwest::{
     Client, Method,
     header::{HeaderMap, HeaderValue, USER_AGENT},
 };
-use serde_json::json;
 
 pub async fn fetch_team_details() -> String {
     // 1. Try to get the network response

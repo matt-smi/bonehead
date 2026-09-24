@@ -1,8 +1,7 @@
 use std::env;
 
 use bonehead::edit_distance::close_enough;
-use bonehead::nhl::{fetch_fantasy, fetch_team_details};
-use serenity::all::{CreateAttachment, CreateEmbed, CreateMessage};
+use bonehead::fantrax::get_standings;
 use serenity::async_trait;
 use serenity::model::channel::Message;
 use serenity::prelude::*;
@@ -17,61 +16,52 @@ impl EventHandler for Handler {
             return;
         }
 
-        if msg.content == "!canucks" {
-            let details = fetch_team_details().await;
-
-            let attachment = CreateAttachment::bytes(details.as_bytes(), "canucks.json");
-
-            let builder = CreateMessage::new()
-                .content("Here are the Canucks team details:")
-                .add_file(attachment);
-
-            if let Err(why) = msg.channel_id.send_message(&ctx.http, builder).await {
-                println!("Error sending Discord message: {:?}", why);
-            }
-        }
-
         if msg.content == "!fantasy" {
-            let details = fetch_fantasy().await;
+            let standings = get_standings().await.unwrap();
 
-            let attachment = CreateAttachment::bytes(details.as_bytes(), "fantasy.json");
+            let message = standings.iter().fold(
+                String::from("```\nRank  Team                    Points\n"),
+                |mut message, team| {
+                    message.push_str(&format!(
+                        "{:<5} {:<24} {:.1}\n",
+                        team.rank, team.team_name, team.points,
+                    ));
+                    message
+                },
+            ) + "```";
 
-            let builder = CreateMessage::new()
-                .content("Here are the Fantasy league details:")
-                .add_file(attachment);
-
-            if let Err(why) = msg.channel_id.send_message(&ctx.http, builder).await {
+            if let Err(why) = msg.channel_id.say(&ctx.http, message).await {
                 println!("Error sending Discord message: {:?}", why);
             }
         }
 
-        if msg.content == "!embed" {
-            let embed = CreateEmbed::new()
-                .title("Embed Title")
-                .description("Sample embed")
-                .image("https://www.pngfind.com/pngs/m/52-527995_the-most-epic-meme-on-the-planet-png.png")
-                .color(0x00ff00);
+        // if msg.content == "!embed" {
+        //     let embed = CreateEmbed::new()
+        //         .title("Embed Title")
+        //         .description("Sample embed")
+        //         .image("https://www.pngfind.com/pngs/m/52-527995_the-most-epic-meme-on-the-planet-png.png")
+        //         .color(0x00ff00);
 
-            let message = CreateMessage::new().embed(embed);
-            if let Err(_why) = msg.channel_id.send_message(&ctx.http, message).await {
-                // do nothing
-            }
-        }
+        //     let message = CreateMessage::new().embed(embed);
+        //     if let Err(_why) = msg.channel_id.send_message(&ctx.http, message).await {
+        //         // do nothing
+        //     }
+        // }
 
-        if msg.content == "!hello" && msg.channel_id.to_string() == "1547789542377914378" {
-            if let Err(why) = msg
-                .channel_id
-                .say(&ctx.http, format!("Hello, {}", msg.author))
-                .await
-            {
-                println!("Error sending message: {why:?}");
-            }
-        }
-        if msg.content == "!revive" && msg.channel_id.to_string() == "1547789542377914378" {
-            if let Err(why) = msg.channel_id.say(&ctx.http, "Hello, @here").await {
-                println!("Error sending message: {why:?}");
-            }
-        }
+        // if msg.content == "!hello" && msg.channel_id.to_string() == "1547789542377914378" {
+        //     if let Err(why) = msg
+        //         .channel_id
+        //         .say(&ctx.http, format!("Hello, {}", msg.author))
+        //         .await
+        //     {
+        //         println!("Error sending message: {why:?}");
+        //     }
+        // }
+        // if msg.content == "!revive" && msg.channel_id.to_string() == "1547789542377914378" {
+        //     if let Err(why) = msg.channel_id.say(&ctx.http, "Hello, @here").await {
+        //         println!("Error sending message: {why:?}");
+        //     }
+        // }
 
         if msg
             .content

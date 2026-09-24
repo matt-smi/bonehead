@@ -105,6 +105,7 @@ version = "0.1.0"
 dependencies = [
  "dotenvy",
  "reqwest 0.13.5",
+ "serde",
  "serde_json",
  "serenity",
  "tokio",
@@ -1392,6 +1393,7 @@ dependencies = [
  "rustls-platform-verifier",
  "serde",
  "serde_json",
+ "serde_urlencoded",
  "sync_wrapper",
  "tokio",
  "tokio-rustls 0.26.5",
