@@ -1,7 +1,8 @@
 use std::env;
 
 use bonehead::edit_distance::close_enough;
-use serenity::all::{CreateEmbed, CreateMessage};
+use bonehead::nhl::{fetch_fantasy, fetch_team_details};
+use serenity::all::{CreateAttachment, CreateEmbed, CreateMessage};
 use serenity::async_trait;
 use serenity::model::channel::Message;
 use serenity::prelude::*;
@@ -14,6 +15,34 @@ impl EventHandler for Handler {
         // Bonehead's own ID. Ignore own messages to prevent infinite loop
         if msg.author.id.to_string() == "1120914419875053638" {
             return;
+        }
+
+        if msg.content == "!canucks" {
+            let details = fetch_team_details().await;
+
+            let attachment = CreateAttachment::bytes(details.as_bytes(), "canucks.json");
+
+            let builder = CreateMessage::new()
+                .content("Here are the Canucks team details:")
+                .add_file(attachment);
+
+            if let Err(why) = msg.channel_id.send_message(&ctx.http, builder).await {
+                println!("Error sending Discord message: {:?}", why);
+            }
+        }
+
+        if msg.content == "!fantasy" {
+            let details = fetch_fantasy().await;
+
+            let attachment = CreateAttachment::bytes(details.as_bytes(), "fantasy.json");
+
+            let builder = CreateMessage::new()
+                .content("Here are the Fantasy league details:")
+                .add_file(attachment);
+
+            if let Err(why) = msg.channel_id.send_message(&ctx.http, builder).await {
+                println!("Error sending Discord message: {:?}", why);
+            }
         }
 
         if msg.content == "!embed" {
