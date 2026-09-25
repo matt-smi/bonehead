@@ -117,8 +117,13 @@ impl EventHandler for Handler {
             .split(" ")
             .any(|word| close_enough("zack", word) || word == "<@230826525732241409>")
         {
-            if let Err(_why) = msg.react(&ctx.http, '🔥').await {
-                println!("Error");
+            let reaction = ReactionType::Custom {
+                animated: true,
+                id: EmojiId::new(1552841489850044487),
+                name: Some("zack".to_string()),
+            };
+            if let Err(why) = msg.react(&ctx.http, reaction).await {
+                println!("{:?}", why);
             }
         }
     }
