@@ -94,8 +94,8 @@ impl EventHandler for Handler {
         {
             let reaction = ReactionType::Custom {
                 animated: false,
-                id: EmojiId::new(1552834871267823656),
-                name: Some("ricecat".to_string()),
+                id: EmojiId::new(1552908315179221023),
+                name: Some("kyle".to_string()),
             };
             if let Err(why) = msg.react(&ctx.http, reaction).await {
                 println!("{:?}", why);
@@ -107,8 +107,13 @@ impl EventHandler for Handler {
             .split(" ")
             .any(|word| close_enough("attila", word) || word == "<@184453911980015616>")
         {
-            if let Err(_why) = msg.react(&ctx.http, '😈').await {
-                println!("Error");
+            let reaction = ReactionType::Custom {
+                animated: false,
+                id: EmojiId::new(1552869545553698867),
+                name: Some("sonicbreakdance".to_string()),
+            };
+            if let Err(why) = msg.react(&ctx.http, reaction).await {
+                println!("{:?}", why);
             }
         }
 
