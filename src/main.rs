@@ -2,6 +2,7 @@ use std::env;
 
 use bonehead::edit_distance::close_enough;
 use bonehead::fantrax::get_standings;
+use serenity::all::{EmojiId, ReactionType};
 use serenity::async_trait;
 use serenity::model::channel::Message;
 use serenity::prelude::*;
@@ -89,17 +90,35 @@ impl EventHandler for Handler {
         if msg
             .content
             .split(" ")
+            .any(|word| close_enough("kyle", word) || word == "<@237764884127940618>")
+        {
+            let reaction = ReactionType::Custom {
+                animated: false,
+                id: EmojiId::new(1552834871267823656),
+                name: Some("ricecat".to_string()),
+            };
+            if let Err(why) = msg.react(&ctx.http, reaction).await {
+                println!("{:?}", why);
+            }
+        }
+
+        if msg
+            .content
+            .split(" ")
+            .any(|word| close_enough("attila", word) || word == "<@184453911980015616>")
+        {
+            if let Err(_why) = msg.react(&ctx.http, '😈').await {
+                println!("Error");
+            }
+        }
+
+        if msg
+            .content
+            .split(" ")
             .any(|word| close_enough("zack", word) || word == "<@230826525732241409>")
         {
             if let Err(_why) = msg.react(&ctx.http, '🔥').await {
                 println!("Error");
-            }
-            if let Err(_why) = msg
-                .channel_id
-                .say(&ctx.http, format!("Wassup <@{}>", 230826525732241409i64))
-                .await
-            {
-                // no op
             }
         }
     }
