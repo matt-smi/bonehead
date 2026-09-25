@@ -126,6 +126,21 @@ impl EventHandler for Handler {
                 println!("{:?}", why);
             }
         }
+
+        if msg
+            .content
+            .split(" ")
+            .any(|word| close_enough("roland", word) || word == "<@244288039378092032>")
+        {
+            let reaction = ReactionType::Custom {
+                animated: true,
+                id: EmojiId::new(1552868876902080542),
+                name: Some("diddykongshocked".to_string()),
+            };
+            if let Err(why) = msg.react(&ctx.http, reaction).await {
+                println!("{:?}", why);
+            }
+        }
     }
 }
 
