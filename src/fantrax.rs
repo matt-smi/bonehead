@@ -1,26 +1,16 @@
 use serde::Deserialize;
 
 const BASE_URL: &str = "https://www.fantrax.com/fxea/general";
-const LEAGUE_ID: &str = "lodfazipmgiyrlxi";
+//const LEAGUE_ID: &str = "lodfazipmgiyrlxi";
+const LEAGUE_ID: &str = "kby42l6cmudgs9gb";
 const USER_AGENT: &str = "bonehead/0.1";
 
 #[derive(Debug, Deserialize)]
 pub struct FantasyTeam {
     #[serde(rename = "teamName")]
     pub team_name: String,
-
     pub rank: i32,
-
-    #[serde(deserialize_with = "deserialize_f32")]
-    pub points: f32,
-}
-
-fn deserialize_f32<'de, D>(deserializer: D) -> Result<f32, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let value = String::deserialize(deserializer)?;
-    value.parse::<f32>().map_err(serde::de::Error::custom)
+    pub points: String,
 }
 
 // todo: update box-dyn to typed error
@@ -49,6 +39,7 @@ mod tests {
     #[tokio::test]
     async fn test_get_standings() {
         let result = get_standings().await;
+        println!("{:?}", result);
 
         match result {
             Ok(body) => {

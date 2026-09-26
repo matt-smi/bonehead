@@ -24,7 +24,7 @@ impl EventHandler for Handler {
                 String::from("```\nRank  Team                    Points\n"),
                 |mut message, team| {
                     message.push_str(&format!(
-                        "{:<5} {:<24} {:.1}\n",
+                        "{:<5} {:<24} {}\n",
                         team.rank, team.team_name, team.points,
                     ));
                     message
