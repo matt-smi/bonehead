@@ -1,151 +1,156 @@
-use std::env;
+use std::collections::HashMap;
 
-use bonehead::edit_distance::close_enough;
 use bonehead::fantrax::get_standings;
-use serenity::all::{EmojiId, ReactionType};
-use serenity::async_trait;
-use serenity::model::channel::Message;
-use serenity::prelude::*;
+use poise::serenity_prelude as serenity;
+use poise::serenity_prelude::{FullEvent, ReactionType, UserId};
+use serde::{Deserialize, Serialize};
+use tokio::sync::RwLock;
 
-struct Handler;
-
-#[async_trait]
-impl EventHandler for Handler {
-    async fn message(&self, ctx: Context, msg: Message) {
-        // Bonehead's own ID. Ignore own messages to prevent infinite loop
-        if msg.author.id.to_string() == "1120914419875053638" {
-            return;
+struct Data {
+    user_reactions: RwLock<HashMap<UserId, ReactionType>>,
+}
+impl Data {
+    fn default() -> Self {
+        Data {
+            user_reactions: RwLock::new(HashMap::new()),
         }
+    }
+}
+type Error = Box<dyn std::error::Error + Send + Sync>;
+type Ctx<'a> = poise::Context<'a, Data, Error>;
 
-        if msg.content == "!fantasy" {
-            let standings = get_standings().await.unwrap();
+#[poise::command(prefix_command)]
+async fn fantasy(ctx: Ctx<'_>) -> Result<(), Error> {
+    let standings = get_standings().await.unwrap();
 
-            let message = standings.iter().fold(
-                String::from("```\nRank  Team                    Points\n"),
-                |mut message, team| {
-                    message.push_str(&format!(
-                        "{:<5} {:<24} {}\n",
-                        team.rank, team.team_name, team.points,
-                    ));
-                    message
-                },
-            ) + "```";
+    let message = standings.iter().fold(
+        String::from("```\nRank  Team                    Points\n"),
+        |mut message, team| {
+            message.push_str(&format!(
+                "{:<5} {:<24} {}\n",
+                team.rank, team.team_name, team.points,
+            ));
+            message
+        },
+    ) + "```";
 
-            if let Err(why) = msg.channel_id.say(&ctx.http, message).await {
-                println!("Error sending Discord message: {:?}", why);
+    ctx.say(message).await?;
+    Ok(())
+}
+
+fn resolve_emoji(
+    ctx: &serenity::Context,
+    guild_id: Option<serenity::GuildId>,
+    input: &str,
+) -> Result<ReactionType, String> {
+    let trimmed = input.trim();
+
+    // cheap checks first: parse as unicode emoji or full <a:name:id> custom syntax
+    if let Ok(reaction) = ReactionType::try_from(trimmed) {
+        match &reaction {
+            ReactionType::Unicode(emoji_str) if emojis::get(emoji_str).is_some() => {
+                return Ok(reaction);
+            }
+            ReactionType::Unicode(_) => {} // not a real unicode emoji, fall through to guild lookup
+            _ => return Ok(reaction),      // custom <a:name:id> syntax parsed successfully
+        }
+    }
+
+    // fall back to guild custom emoji lookup by bare name (for non-Nitro users)
+    if let Some(guild_id) = guild_id {
+        if let Some(emoji) = find_emoji_by_name(ctx, guild_id, trimmed) {
+            return Ok(emoji.into());
+        }
+    }
+
+    Err(format!("'{trimmed}' is not a valid emoji"))
+}
+fn find_emoji_by_name(
+    ctx: &serenity::Context,
+    guild_id: serenity::GuildId,
+    name: &str,
+) -> Option<serenity::Emoji> {
+    let guild = ctx.cache.guild(guild_id)?;
+    guild
+        .emojis
+        .values()
+        .find(|e| e.name.eq_ignore_ascii_case(name))
+        .cloned()
+}
+
+#[poise::command(prefix_command, rename = "emoji")]
+async fn set_emoji(
+    ctx: Ctx<'_>,
+    #[description = "User to trigger on when mentioned"] user: serenity::User,
+    #[description = "Emoji to react with"] emoji: String,
+) -> Result<(), Error> {
+    let guild_id = ctx.guild_id();
+    let reaction = match resolve_emoji(ctx.serenity_context(), guild_id, &emoji) {
+        Ok(r) => r,
+        Err(msg) => {
+            ctx.say(msg).await?;
+            return Ok(()); // stop here, don't fall through to inserting anything
+        }
+    };
+
+    // context for acquiring write lock
+    {
+        let mut map = ctx.data().user_reactions.write().await;
+        map.insert(user.id, reaction.clone());
+    }
+    save_data(ctx.data()).await?;
+
+    Ok(())
+}
+
+async fn event_handler(
+    framework: poise::FrameworkContext<'_, Data, Error>,
+    event: &serenity::FullEvent,
+) -> Result<(), Error> {
+    let ctx = framework.serenity_context;
+    let data = framework.user_data;
+
+    match event {
+        FullEvent::Message { new_message } => {
+            // ignore bot messages to avoid loops
+            if new_message.author.bot {
+                return Ok(());
+            }
+            let user_reactions = data.user_reactions.read().await;
+            for mentioned in &new_message.mentions {
+                if let Some(reaction) = user_reactions.get(&mentioned.id) {
+                    new_message.react(ctx, reaction.clone()).await?;
+                }
+            }
+            drop(user_reactions);
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+#[derive(Serialize, Deserialize, Default)]
+struct PersistedData {
+    user_reactions: HashMap<UserId, ReactionType>,
+}
+
+async fn save_data(data: &Data) -> Result<(), Error> {
+    let user_reactions = data.user_reactions.read().await.clone();
+    let persisted = PersistedData { user_reactions };
+    let json = serde_json::to_string_pretty(&persisted)?;
+    tokio::fs::write("reactions.json", json).await?;
+    Ok(())
+}
+
+async fn load_data() -> Data {
+    match tokio::fs::read_to_string("reactions.json").await {
+        Ok(json) => {
+            let persisted: PersistedData = serde_json::from_str(&json).unwrap_or_default();
+            Data {
+                user_reactions: RwLock::new(persisted.user_reactions),
             }
         }
-
-        // if msg.content == "!embed" {
-        //     let embed = CreateEmbed::new()
-        //         .title("Embed Title")
-        //         .description("Sample embed")
-        //         .image("https://www.pngfind.com/pngs/m/52-527995_the-most-epic-meme-on-the-planet-png.png")
-        //         .color(0x00ff00);
-
-        //     let message = CreateMessage::new().embed(embed);
-        //     if let Err(_why) = msg.channel_id.send_message(&ctx.http, message).await {
-        //         // do nothing
-        //     }
-        // }
-
-        // if msg.content == "!hello" && msg.channel_id.to_string() == "1547789542377914378" {
-        //     if let Err(why) = msg
-        //         .channel_id
-        //         .say(&ctx.http, format!("Hello, {}", msg.author))
-        //         .await
-        //     {
-        //         println!("Error sending message: {why:?}");
-        //     }
-        // }
-        // if msg.content == "!revive" && msg.channel_id.to_string() == "1547789542377914378" {
-        //     if let Err(why) = msg.channel_id.say(&ctx.http, "Hello, @here").await {
-        //         println!("Error sending message: {why:?}");
-        //     }
-        // }
-
-        if msg
-            .content
-            .split(" ")
-            .any(|word| close_enough("game", word))
-        {
-            if let Err(_why) = msg.channel_id.say(
-                &ctx.http,
-                "https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExMjhpYXgxMHA2M2hvZWgwM29yM3YwNGdoYTdlanR4YWtmMzZwZXdhcSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/yA4oraHXhwqNHpELV1/giphy.gif"
-            ).await {
-                // ignore
-            }
-        }
-
-        if msg
-            .content
-            .split(" ")
-            .any(|word| close_enough("matthew", word))
-        {
-            if let Err(_why) = msg.react(&ctx.http, '🐐').await {
-                println!("Error");
-            }
-        }
-
-        if msg
-            .content
-            .split(" ")
-            .any(|word| close_enough("kyle", word) || word == "<@237764884127940618>")
-        {
-            let reaction = ReactionType::Custom {
-                animated: false,
-                id: EmojiId::new(1552908315179221023),
-                name: Some("kyle".to_string()),
-            };
-            if let Err(why) = msg.react(&ctx.http, reaction).await {
-                println!("{:?}", why);
-            }
-        }
-
-        if msg
-            .content
-            .split(" ")
-            .any(|word| close_enough("attila", word) || word == "<@184453911980015616>")
-        {
-            let reaction = ReactionType::Custom {
-                animated: false,
-                id: EmojiId::new(1552869545553698867),
-                name: Some("sonicbreakdance".to_string()),
-            };
-            if let Err(why) = msg.react(&ctx.http, reaction).await {
-                println!("{:?}", why);
-            }
-        }
-
-        if msg
-            .content
-            .split(" ")
-            .any(|word| close_enough("zack", word) || word == "<@230826525732241409>")
-        {
-            let reaction = ReactionType::Custom {
-                animated: true,
-                id: EmojiId::new(1552841489850044487),
-                name: Some("zack".to_string()),
-            };
-            if let Err(why) = msg.react(&ctx.http, reaction).await {
-                println!("{:?}", why);
-            }
-        }
-
-        if msg
-            .content
-            .split(" ")
-            .any(|word| close_enough("roland", word) || word == "<@244288039378092032>")
-        {
-            let reaction = ReactionType::Custom {
-                animated: true,
-                id: EmojiId::new(1552868876902080542),
-                name: Some("diddykongshocked".to_string()),
-            };
-            if let Err(why) = msg.react(&ctx.http, reaction).await {
-                println!("{:?}", why);
-            }
-        }
+        Err(_) => Data::default(),
     }
 }
 
@@ -153,20 +158,36 @@ impl EventHandler for Handler {
 async fn main() {
     // Login with a bot token from the environment
     dotenvy::dotenv().ok();
-    let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
-    // Set gateway intents, which decides what events the bot will be notified about
-    let intents = GatewayIntents::GUILD_MESSAGES
-        | GatewayIntents::DIRECT_MESSAGES
-        | GatewayIntents::MESSAGE_CONTENT;
+    let token = std::env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
 
-    // Create a new instance of the Client, logging in as a bot.
-    let mut client = Client::builder(&token, intents)
-        .event_handler(Handler)
+    let intents =
+        serenity::GatewayIntents::non_privileged() | serenity::GatewayIntents::MESSAGE_CONTENT;
+
+    let framework = poise::Framework::builder()
+        .options(poise::FrameworkOptions {
+            commands: vec![fantasy(), set_emoji()],
+            prefix_options: poise::PrefixFrameworkOptions {
+                prefix: Some("!".into()),
+                ..Default::default()
+            },
+            event_handler: |framework, event| Box::pin(event_handler(framework, event)),
+            ..Default::default()
+        })
+        .setup(|_ctx, ready, _framework| {
+            Box::pin(async move {
+                println!("{} is connected!", ready.user.name);
+                Ok(load_data().await)
+            })
+        })
+        .build();
+
+    let client = serenity::ClientBuilder::new(token, intents)
+        .framework(framework)
+        .await;
+
+    client
+        .expect("error creating client")
+        .start()
         .await
-        .expect("Err creating client");
-
-    // Start listening for events by starting a single shard
-    if let Err(why) = client.start().await {
-        println!("Client error: {why:?}");
-    }
+        .expect("client error");
 }
