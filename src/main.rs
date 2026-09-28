@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use bonehead::cron::monday_loop;
 use bonehead::fantrax::get_standings;
 use poise::serenity_prelude as serenity;
 use poise::serenity_prelude::{FullEvent, ReactionType, UserId};
@@ -173,9 +174,14 @@ async fn main() {
             event_handler: |framework, event| Box::pin(event_handler(framework, event)),
             ..Default::default()
         })
-        .setup(|_ctx, ready, _framework| {
+        .setup(|ctx, ready, _framework| {
             Box::pin(async move {
                 println!("{} is connected!", ready.user.name);
+
+                let http = ctx.http.clone();
+                let channel = serenity::ChannelId::new(239205378406088704); // #general chat
+                tokio::spawn(monday_loop(http, channel));
+
                 Ok(load_data().await)
             })
         })
