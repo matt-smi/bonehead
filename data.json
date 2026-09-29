@@ -1,12 +1,14 @@
 {
-  "235962572912721922": {
-    "reaction": {
-      "name": "🐐"
-    },
-    "fantasy_team_name": "Licensed to Dangle"
-  },
   "230826525732241409": {
     "reaction": null,
     "fantasy_team_name": "Teyvat Titans"
+  },
+  "235962572912721922": {
+    "reaction": {
+      "animated": true,
+      "id": "1552869181953810462",
+      "name": "nonono"
+    },
+    "fantasy_team_name": "Licensed to Dangle"
   }
 }

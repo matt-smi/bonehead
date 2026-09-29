@@ -1,8 +1,9 @@
-use crate::Error;
 use ab_glyph::{FontRef, PxScale};
 use image::{DynamicImage, ImageBuffer, Rgba, RgbaImage};
 use imageproc::drawing::{draw_filled_circle_mut, draw_filled_rect_mut, draw_text_mut};
 use imageproc::rect::Rect;
+
+use crate::shared::Error;
 
 static FONT_BYTES: &[u8] = include_bytes!("../assets/font.ttf");
 
