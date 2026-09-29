@@ -9,7 +9,7 @@ const USER_AGENT: &str = "bonehead/0.1";
 pub struct FantasyTeam {
     #[serde(rename = "teamName")]
     pub team_name: String,
-    pub rank: i32,
+    pub rank: u32,
     pub points: String,
 }
 

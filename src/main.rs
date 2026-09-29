@@ -1,41 +1,168 @@
-use std::collections::HashMap;
-
+use bonehead::Error;
 use bonehead::cron::monday_loop;
 use bonehead::fantrax::get_standings;
+use bonehead::leaderboard::{LeaderboardRow, fetch_avatar_bytes, generate_leaderboard_image};
+use dashmap::DashMap;
 use poise::serenity_prelude as serenity;
 use poise::serenity_prelude::{FullEvent, ReactionType, UserId};
 use serde::{Deserialize, Serialize};
-use tokio::sync::RwLock;
 
+#[derive(Serialize, Deserialize, Default, Clone)]
+struct UserMetadata {
+    reaction: Option<ReactionType>,
+    fantasy_team_name: Option<String>,
+}
+
+#[derive(Default)]
 struct Data {
-    user_reactions: RwLock<HashMap<UserId, ReactionType>>,
+    users: DashMap<UserId, UserMetadata>,
 }
-impl Data {
-    fn default() -> Self {
-        Data {
-            user_reactions: RwLock::new(HashMap::new()),
-        }
-    }
-}
-type Error = Box<dyn std::error::Error + Send + Sync>;
 type Ctx<'a> = poise::Context<'a, Data, Error>;
+
+/// Register something
+#[poise::command(slash_command, subcommands("register_emoji", "register_fantasy"))]
+async fn register(_ctx: Ctx<'_>) -> Result<(), Error> {
+    // this body only runs if someone invokes the bare parent with no subcommand,
+    // which slash commands with subcommands generally won't allow —
+    // Discord requires picking one of the listed subcommands
+    Ok(())
+}
+
+/// Register a reaction emoji
+#[poise::command(slash_command, rename = "emoji")]
+async fn register_emoji(
+    ctx: Ctx<'_>,
+    #[description = "Emoji to register"] emoji: String,
+) -> Result<(), Error> {
+    let guild_id = ctx.guild_id();
+    let reaction = match resolve_emoji(ctx.serenity_context(), guild_id, &emoji) {
+        Ok(r) => r,
+        Err(msg) => {
+            ctx.say(msg).await?;
+            return Ok(()); // stop here, don't fall through to inserting anything
+        }
+    };
+
+    ctx.data()
+        .users
+        .entry(ctx.author().id)
+        .or_default()
+        .reaction = Some(reaction.clone());
+    save_data(ctx.data()).await?;
+
+    ctx.send(
+        poise::CreateReply::default()
+            .content(format!("Registered reaction: {reaction}"))
+            .ephemeral(true),
+    )
+    .await?;
+    Ok(())
+}
+
+/// Register a fantasy team name
+#[poise::command(slash_command, rename = "fantasy")]
+async fn register_fantasy(
+    ctx: Ctx<'_>,
+    #[description = "Your fantasy team name"] fantasy_team_name: String,
+) -> Result<(), Error> {
+    ctx.data()
+        .users
+        .entry(ctx.author().id)
+        .or_default()
+        .fantasy_team_name = Some(fantasy_team_name.clone());
+    save_data(ctx.data()).await?;
+
+    ctx.send(
+        poise::CreateReply::default()
+            .content(format!("Registered team name: {fantasy_team_name}"))
+            .ephemeral(true),
+    )
+    .await?;
+    Ok(())
+}
+
+#[poise::command(prefix_command)]
+async fn me(ctx: Ctx<'_>) -> Result<(), Error> {
+    let (team_name, reaction) = ctx
+        .data()
+        .users
+        .get(&ctx.author().id)
+        .map(|u| (u.fantasy_team_name.clone(), u.reaction.clone()))
+        .unwrap_or((None, None));
+
+    let team_name = team_name.unwrap_or_else(|| "No team registered".to_string());
+    let reaction = reaction
+        .map(|r| r.to_string())
+        .unwrap_or_else(|| "".to_string());
+
+    let embed = serenity::CreateEmbed::new()
+        .author(serenity::CreateEmbedAuthor::new(&ctx.author().name).icon_url(ctx.author().face()))
+        .field("Fantasy Team", format!("_{}_", team_name), true)
+        .field("Reaction", reaction, true)
+        .color(0x57F287);
+    ctx.send(poise::CreateReply::default().embed(embed)).await?;
+
+    Ok(())
+}
+
+fn find_team_owner(data: &Data, team_name: &str) -> Option<UserId> {
+    data.users
+        .iter()
+        .find(|entry| entry.fantasy_team_name.as_deref() == Some(team_name))
+        .map(|entry| *entry.key())
+}
 
 #[poise::command(prefix_command)]
 async fn fantasy(ctx: Ctx<'_>) -> Result<(), Error> {
     let standings = get_standings().await.unwrap();
 
-    let message = standings.iter().fold(
-        String::from("```\nRank  Team                    Points\n"),
-        |mut message, team| {
-            message.push_str(&format!(
-                "{:<5} {:<24} {}\n",
-                team.rank, team.team_name, team.points,
-            ));
-            message
-        },
-    ) + "```";
+    // build rows: resolve owner + fetch avatar bytes for each team
+    let mut rows = Vec::new();
+    for team in &standings {
+        let owner_id = find_team_owner(ctx.data(), &team.team_name);
 
-    ctx.say(message).await?;
+        let (owner_display, avatar_bytes) = match owner_id {
+            Some(user_id) => {
+                let user = user_id.to_user(ctx.serenity_context()).await?;
+                let bytes = fetch_avatar_bytes(&user.face()).await;
+                (format!("@{}", user.name), bytes)
+            }
+            None => ("Unclaimed".to_string(), None),
+        };
+
+        rows.push(LeaderboardRow {
+            rank: team.rank,
+            team_name: team.team_name.clone(),
+            record: team.points.clone(),
+            owner_display,
+            avatar_bytes,
+        });
+    }
+
+    let png_bytes = generate_leaderboard_image(&rows)?;
+
+    let role = serenity::RoleId::new(1554000251579539596);
+
+    let attachment = serenity::CreateAttachment::bytes(png_bytes, "leaderboard.png");
+    let embed = serenity::CreateEmbed::new()
+        .title("🏆 Fantasy Standings")
+        .image("attachment://leaderboard.png")
+        .color(0x5865F2);
+    let reply = poise::CreateReply::default()
+        .content(format!("<@&{}>", role.get()))
+        .embed(embed)
+        .attachment(attachment)
+        .allowed_mentions(serenity::CreateAllowedMentions::new().roles([role]));
+
+    // let embed = serenity::CreateEmbed::new()
+    //     .title("🏆 Fantasy Standings <@1554000251579539596>")
+    //     .image("attachment://leaderboard.png")
+    //     .color(0x5865F2);
+    // let reply = poise::CreateReply::default()
+    //     .embed(embed)
+    //     .attachment(attachment);
+
+    ctx.send(reply).await?;
     Ok(())
 }
 
@@ -79,30 +206,30 @@ fn find_emoji_by_name(
         .cloned()
 }
 
-#[poise::command(prefix_command, rename = "emoji")]
-async fn set_emoji(
-    ctx: Ctx<'_>,
-    #[description = "User to trigger on when mentioned"] user: serenity::User,
-    #[description = "Emoji to react with"] emoji: String,
-) -> Result<(), Error> {
-    let guild_id = ctx.guild_id();
-    let reaction = match resolve_emoji(ctx.serenity_context(), guild_id, &emoji) {
-        Ok(r) => r,
-        Err(msg) => {
-            ctx.say(msg).await?;
-            return Ok(()); // stop here, don't fall through to inserting anything
-        }
-    };
-
-    // context for acquiring write lock
-    {
-        let mut map = ctx.data().user_reactions.write().await;
-        map.insert(user.id, reaction.clone());
-    }
-    save_data(ctx.data()).await?;
-
-    Ok(())
-}
+// #[poise::command(prefix_command, rename = "emoji")]
+// async fn set_emoji(
+//     ctx: Ctx<'_>,
+//     #[description = "User to trigger on when mentioned"] user: serenity::User,
+//     #[description = "Emoji to react with"] emoji: String,
+// ) -> Result<(), Error> {
+//     let guild_id = ctx.guild_id();
+//     let reaction = match resolve_emoji(ctx.serenity_context(), guild_id, &emoji) {
+//         Ok(r) => r,
+//         Err(msg) => {
+//             ctx.say(msg).await?;
+//             return Ok(()); // stop here, don't fall through to inserting anything
+//         }
+//     };
+//
+//     // context for acquiring write lock
+//     {
+//         let mut map = ctx.data().user_reactions.write().await;
+//         map.insert(user.id, reaction.clone());
+//     }
+//     save_data(ctx.data()).await?;
+//
+//     Ok(())
+// }
 
 async fn event_handler(
     framework: poise::FrameworkContext<'_, Data, Error>,
@@ -117,39 +244,33 @@ async fn event_handler(
             if new_message.author.bot {
                 return Ok(());
             }
-            let user_reactions = data.user_reactions.read().await;
             for mentioned in &new_message.mentions {
-                if let Some(reaction) = user_reactions.get(&mentioned.id) {
-                    new_message.react(ctx, reaction.clone()).await?;
+                let reaction = data
+                    .users
+                    .get(&mentioned.id)
+                    .and_then(|m| m.reaction.clone());
+                if let Some(reaction) = reaction {
+                    new_message.react(ctx, reaction).await?;
                 }
             }
-            drop(user_reactions);
         }
         _ => {}
     }
     Ok(())
 }
 
-#[derive(Serialize, Deserialize, Default)]
-struct PersistedData {
-    user_reactions: HashMap<UserId, ReactionType>,
-}
-
 async fn save_data(data: &Data) -> Result<(), Error> {
-    let user_reactions = data.user_reactions.read().await.clone();
-    let persisted = PersistedData { user_reactions };
-    let json = serde_json::to_string_pretty(&persisted)?;
-    tokio::fs::write("reactions.json", json).await?;
+    let json = serde_json::to_string_pretty(&data.users)?;
+    tokio::fs::write("data.json", json).await?;
     Ok(())
 }
 
 async fn load_data() -> Data {
-    match tokio::fs::read_to_string("reactions.json").await {
+    match tokio::fs::read_to_string("data.json").await {
         Ok(json) => {
-            let persisted: PersistedData = serde_json::from_str(&json).unwrap_or_default();
-            Data {
-                user_reactions: RwLock::new(persisted.user_reactions),
-            }
+            let users: DashMap<UserId, UserMetadata> =
+                serde_json::from_str(&json).unwrap_or_default();
+            Data { users }
         }
         Err(_) => Data::default(),
     }
@@ -166,7 +287,7 @@ async fn main() {
 
     let framework = poise::Framework::builder()
         .options(poise::FrameworkOptions {
-            commands: vec![fantasy(), set_emoji()],
+            commands: vec![fantasy(), register(), me()],
             prefix_options: poise::PrefixFrameworkOptions {
                 prefix: Some("!".into()),
                 ..Default::default()
@@ -174,13 +295,17 @@ async fn main() {
             event_handler: |framework, event| Box::pin(event_handler(framework, event)),
             ..Default::default()
         })
-        .setup(|ctx, ready, _framework| {
+        .setup(|ctx, ready, framework| {
             Box::pin(async move {
                 println!("{} is connected!", ready.user.name);
 
                 let http = ctx.http.clone();
-                let channel = serenity::ChannelId::new(239205378406088704); // #general chat
+                let channel = serenity::ChannelId::new(1554313505887363082); // #fantasy chat
                 tokio::spawn(monday_loop(http, channel));
+
+                let guild_id = serenity::GuildId::new(239205378406088704);
+                poise::builtins::register_in_guild(ctx, &framework.options().commands, guild_id)
+                    .await?;
 
                 Ok(load_data().await)
             })

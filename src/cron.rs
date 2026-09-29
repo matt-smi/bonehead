@@ -28,9 +28,7 @@ pub async fn monday_loop(http: Arc<serenity::Http>, channel: serenity::ChannelId
         let now = chrono::Utc::now().with_timezone(&tz);
         let wait = (next - now).to_std().unwrap_or_default();
 
-        println!("next monday job at {next} (in {wait:?})");
         tokio::time::sleep(wait).await;
-
         run_monday_job(&http, channel).await;
 
         // buffer so the same slot can't fire twice if the clock jitters
