@@ -89,21 +89,21 @@ async fn main() {
                 let channel = serenity::ChannelId::new(GENERAL_CHAT);
                 tokio::spawn(monday_loop(http, channel, users_for_cron));
 
-                // let http_client = reqwest::Client::builder()
-                //     .user_agent(concat!(
-                //         env!("CARGO_PKG_NAME"),
-                //         "/",
-                //         env!("CARGO_PKG_VERSION")
-                //     ))
-                //     .timeout(Duration::from_secs(10))
-                //     .build()?;
+                let http_client = reqwest::Client::builder()
+                    .user_agent(concat!(
+                        env!("CARGO_PKG_NAME"),
+                        "/",
+                        env!("CARGO_PKG_VERSION")
+                    ))
+                    .timeout(Duration::from_secs(10))
+                    .build()?;
 
-                // tokio::spawn(poll_game(
-                //     ctx.http.clone(),    // serenity's Discord handle
-                //     http_client.clone(), // your new client (cheap clone)
-                //     2026020004,
-                //     serenity::ChannelId::new(1554669317931667546),
-                // ));
+                tokio::spawn(poll_game(
+                    ctx.http.clone(),    // serenity's Discord handle
+                    http_client.clone(), // your new client (cheap clone)
+                    2026020015,
+                    serenity::ChannelId::new(1554669317931667546),
+                ));
 
                 let guild_id = serenity::GuildId::new(GUILD_ID);
                 poise::builtins::register_in_guild(ctx, &framework.options().commands, guild_id)

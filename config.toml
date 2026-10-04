@@ -1,0 +1,14 @@
+timezone = "America/Los_Angeles"
+guild_id = 239205378406088704
+
+[channels]
+default = 239205378406088704
+hockey = 1554669317931667546
+
+[roles]
+# Role ID for receiving fantasy hockey pings
+hockey = 1554000251579539596
+
+[nhl]
+# Team abbreviations to follow.
+teams = ["VAN"]
