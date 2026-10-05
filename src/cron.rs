@@ -34,7 +34,7 @@ pub async fn monday_loop(
     let tz = chrono_tz::America::Los_Angeles;
 
     loop {
-        let next = next_occurrence(tz, Weekday::Mon, 9, 0); // 9:00am Monday
+        let next = next_occurrence(tz, Weekday::Sun, 10 + 12, 30); // 10:30pm Sunday
         let now = chrono::Utc::now().with_timezone(&tz);
         let wait = (next - now).to_std().unwrap_or_default();
 
