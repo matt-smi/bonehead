@@ -252,6 +252,7 @@ name = "bonehead"
 version = "0.1.0"
 dependencies = [
  "ab_glyph",
+ "anyhow",
  "chrono",
  "chrono-tz",
  "dashmap 6.2.1",

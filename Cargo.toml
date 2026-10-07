@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 ab_glyph = "0.2.32"
+anyhow = "1.0.104"
 chrono = "0.4.45"
 chrono-tz = "0.10.4"
 dashmap = { version = "6.2.1", features = ["serde"] }

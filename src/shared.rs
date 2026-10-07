@@ -18,20 +18,3 @@ pub struct UserMetadata {
 pub struct Data {
     pub users: DashMap<UserId, UserMetadata>,
 }
-
-pub async fn save_data(data: &Data) -> Result<(), Error> {
-    let json = serde_json::to_string_pretty(&data.users)?;
-    tokio::fs::write("data.json", json).await?;
-    Ok(())
-}
-
-pub async fn load_data() -> Data {
-    match tokio::fs::read_to_string("data.json").await {
-        Ok(json) => {
-            let users: DashMap<UserId, UserMetadata> =
-                serde_json::from_str(&json).unwrap_or_default();
-            Data { users }
-        }
-        Err(_) => Data::default(),
-    }
-}

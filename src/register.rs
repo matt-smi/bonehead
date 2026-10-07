@@ -1,4 +1,5 @@
-use crate::shared::{Ctx, Data, Error, save_data};
+use crate::state::AppState;
+use crate::{Ctx, Error};
 use poise::serenity_prelude as serenity;
 use poise::serenity_prelude::{ReactionType, UserId};
 
@@ -31,7 +32,7 @@ async fn register_emoji(
         .entry(ctx.author().id)
         .or_default()
         .reaction = Some(reaction.clone());
-    save_data(ctx.data()).await?;
+    ctx.data().save().await?;
 
     ctx.send(
         poise::CreateReply::default()
@@ -65,7 +66,7 @@ async fn register_fantasy(
         .entry(ctx.author().id)
         .or_default()
         .fantasy_team_name = Some(fantasy_team_name.clone());
-    save_data(ctx.data()).await?;
+    ctx.data().save().await?;
 
     ctx.send(
         poise::CreateReply::default()
@@ -76,7 +77,7 @@ async fn register_fantasy(
     Ok(())
 }
 
-pub fn find_team_owner(data: &Data, team_name: &str) -> Option<UserId> {
+pub fn find_team_owner(data: &AppState, team_name: &str) -> Option<UserId> {
     data.users
         .iter()
         .find(|entry| entry.fantasy_team_name.as_deref() == Some(team_name))
