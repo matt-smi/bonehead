@@ -1,9 +1,9 @@
-use std::time::Duration;
+use std::sync::Arc;
 
-use bonehead::cron::monday_loop;
-use bonehead::goal::poll_game;
+use bonehead::cron::{fantasy_leaderboard, play_by_play};
 use bonehead::register::register;
-use bonehead::shared::{Ctx, Data, Error, GENERAL_CHAT, GUILD_ID, load_data};
+use bonehead::state::AppState;
+use bonehead::{Ctx, Error, GENERAL_CHAT, GUILD_ID, HOCKEY_PLAY_BY_PLAY};
 use poise::serenity_prelude as serenity;
 use poise::serenity_prelude::FullEvent;
 
@@ -32,7 +32,7 @@ async fn me(ctx: Ctx<'_>) -> Result<(), Error> {
 }
 
 async fn event_handler(
-    framework: poise::FrameworkContext<'_, Data, Error>,
+    framework: poise::FrameworkContext<'_, Arc<AppState>, Error>,
     event: &serenity::FullEvent,
 ) -> Result<(), Error> {
     let ctx = framework.serenity_context;
@@ -82,34 +82,26 @@ async fn main() {
             Box::pin(async move {
                 println!("{} is connected!", ready.user.name);
 
-                let data = load_data().await;
+                let mut app_state = AppState::new()?;
+                app_state.load().await;
+                let state = Arc::new(app_state);
 
-                let users_for_cron = data.users.clone(); // shallow clone
-                let http = ctx.http.clone();
-                let channel = serenity::ChannelId::new(GENERAL_CHAT);
-                tokio::spawn(monday_loop(http, channel, users_for_cron));
-
-                //                 let http_client = reqwest::Client::builder()
-                //                     .user_agent(concat!(
-                //                         env!("CARGO_PKG_NAME"),
-                //                         "/",
-                //                         env!("CARGO_PKG_VERSION")
-                //                     ))
-                //                     .timeout(Duration::from_secs(10))
-                //                     .build()?;
-                //
-                //                 tokio::spawn(poll_game(
-                //                     ctx.http.clone(),    // serenity's Discord handle
-                //                     http_client.clone(), // your new client (cheap clone)
-                //                     2026020039,
-                //                     serenity::ChannelId::new(1554669317931667546),
-                //                 ));
+                tokio::spawn(fantasy_leaderboard(
+                    ctx.http.clone(),
+                    serenity::ChannelId::new(GENERAL_CHAT),
+                    state.clone(),
+                ));
+                tokio::spawn(play_by_play(
+                    ctx.http.clone(),
+                    serenity::ChannelId::new(HOCKEY_PLAY_BY_PLAY),
+                    state.clone(),
+                ));
 
                 let guild_id = serenity::GuildId::new(GUILD_ID);
                 poise::builtins::register_in_guild(ctx, &framework.options().commands, guild_id)
                     .await?;
 
-                Ok(load_data().await)
+                Ok(state)
             })
         })
         .build();

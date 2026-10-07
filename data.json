@@ -1,8 +1,4 @@
 {
-  "230826525732241409": {
-    "reaction": null,
-    "fantasy_team_name": "Teyvat Titans"
-  },
   "235962572912721922": {
     "reaction": {
       "animated": true,
@@ -10,5 +6,29 @@
       "name": "nonono"
     },
     "fantasy_team_name": "Licensed to Dangle"
+  },
+  "237764884127940618": {
+    "reaction": {
+      "animated": true,
+      "id": "1552908315179221023",
+      "name": "kyle"
+    },
+    "fantasy_team_name": "City Wok"
+  },
+  "230826525732241409": {
+    "reaction": {
+      "animated": true,
+      "id": "1552841489850044487",
+      "name": "zack"
+    },
+    "fantasy_team_name": "Teyvat Titans"
+  },
+  "244288039378092032": {
+    "reaction": {
+      "animated": true,
+      "id": "1552868876902080542",
+      "name": "diddykongshocked"
+    },
+    "fantasy_team_name": "monkeys"
   }
 }
